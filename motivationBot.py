@@ -1,4 +1,5 @@
-import requests, random, cv2
+import requests, random, cv2, time
+from moviepy.editor import *
 class motivationBot:
     def __init__(self):
         self.quote = ""
@@ -7,6 +8,14 @@ class motivationBot:
         self.numNewLines = 0
         return
     
+    def start(self):
+        #first motivational request
+        self.startingIntervalTime = time.time()
+        self.getMotivationalQuote()
+        self.numQuotesUsedInInterval = 1
+        self.getRandomBackgroundVideo()
+        self.addMusicToVideo()
+
     def getMotivationalQuote(self):
         #get motivational quote
         response = requests.get("https://zenquotes.io/api/random")
@@ -55,6 +64,14 @@ class motivationBot:
         self.numNewLines = len(lines)
         return '\n'.join(lines)
         
+    def addMusicToVideo(self, video_path = "quoted_video.mp4", outputPath = 'final_video.mp4'):
+        print("adding music to video")
+        video = VideoFileClip(video_path)
+        randomAudioNum = random.randint(0, 7)
+        audio_path = "music/" + str(randomAudioNum) + ".mp3"
+        audio = AudioFileClip(audio_path).subclip(0, video.duration)  # Ensures the audio matches the video length
+        video_with_audio = video.set_audio(audio)
+        video_with_audio.write_videofile(outputPath, codec='libx264', audio_codec='aac')
 
 
     def addQuoteToBackground(self, cap):
@@ -71,9 +88,23 @@ class motivationBot:
             if(frameCount == 200):
                 frameCount = 0
                 quoteIndex += 1
-                print("500 frames passed putting new quote")
+                print("200 frames passed putting new quote")
                 self.numNewLines = 0
-                self.getMotivationalQuote()
+                #check if within limit
+                if(self.numQuotesUsedInInterval < 5 and (time.time() - self.startingIntervalTime < 30)):
+                    self.getMotivationalQuote()
+                    self.numQuotesUsedInInterval += 1
+                else:
+                    print("Limit reached waiting for next availability")
+                    remainingTime = 30 - (time.time() - self.startingIntervalTime)
+                    if remainingTime > 0:
+                        time.sleep(remainingTime + 1)
+                    self.startingIntervalTime = time.time()
+                    self.getMotivationalQuote
+                    self.numQuotesUsedInInterval = 1
+
+                    
+                
             if not ret:
                 break
 
@@ -134,5 +165,4 @@ class motivationBot:
         return
     
 bot = motivationBot()
-bot.getMotivationalQuote()
-bot.getRandomBackgroundVideo()
+bot.start()
