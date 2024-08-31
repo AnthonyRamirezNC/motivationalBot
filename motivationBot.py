@@ -1,20 +1,44 @@
 import requests, random, cv2, time
 from moviepy.editor import *
+import os
+import google.auth
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
 class motivationBot:
     def __init__(self):
+        self.tags = [
+            "motivation",
+            "inspiration",
+            "success",
+            "selfimprovement",
+            "positivity"
+        ]
+
+
+
         self.quote = ""
         self.author = ""
         self.responseJson = []
         self.numNewLines = 0
+        # Scopes needed for accessing YouTube API
+        self.SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+        
         return
     
-    def start(self):
+    def run(self):
         #first motivational request
         self.startingIntervalTime = time.time()
         self.getMotivationalQuote()
         self.numQuotesUsedInInterval = 1
         self.getRandomBackgroundVideo()
         self.addMusicToVideo()
+        self.convert_to_vertical('final_video.mp4', 'final_video_vertical.mp4')
+        self.authenticate_youtube()
+        self.uploadVideoToYoutube()
 
     def getMotivationalQuote(self):
         #get motivational quote
@@ -102,9 +126,6 @@ class motivationBot:
                     self.startingIntervalTime = time.time()
                     self.getMotivationalQuote
                     self.numQuotesUsedInInterval = 1
-
-                    
-                
             if not ret:
                 break
 
@@ -160,9 +181,117 @@ class motivationBot:
         out.release()
         cv2.destroyAllWindows()
 
+    def convert_to_vertical(self, video_path, output_path, target_height=1920):
+        print("converting to vertical")
+        # Open the original video
+        cap = cv2.VideoCapture(video_path)
+        
+        # Get original dimensions
+        original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        
+        # Calculate target width for 9:16 aspect ratio
+        target_width = int(target_height * 9 / 16)
+        
+        # Prepare the output video writer with the target resolution
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # or try 'XVID' or 'avc1'
+        out = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
+        
+        if not out.isOpened():
+            print("Error: VideoWriter not opened correctly")
+            return
+        
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Calculate the scaling factors to resize the frame
+            width_scale = target_width / original_width
+            height_scale = target_height / original_height
+
+            # Use the smaller scaling factor to ensure the whole image fits
+            scale_factor = min(width_scale, height_scale)
+
+            # Calculate the new size after scaling
+            new_width = int(original_width * scale_factor)
+            new_height = int(original_height * scale_factor)
+
+            # Resize the frame to the new dimensions
+            resized_frame = cv2.resize(frame, (new_width, new_height))
+
+            # Calculate padding to center the resized frame
+            pad_x = (target_width - new_width) // 2
+            pad_y = (target_height - new_height) // 2
+
+            # Apply padding to make the resized frame fit the target dimensions
+            final_frame = cv2.copyMakeBorder(
+                resized_frame, 
+                pad_y, pad_y,  # Top and bottom padding
+                pad_x, pad_x,  # Left and right padding
+                cv2.BORDER_CONSTANT, 
+                value=[0, 0, 0]  # Black padding
+            )
+
+            # Ensure the final frame has the exact target dimensions
+            final_frame = cv2.resize(final_frame, (target_width, target_height))
+
+            # Write the processed frame to the output video
+            out.write(final_frame)
+        
+        # Release everything when done
+        cap.release()
+        out.release()
+
+        # Confirm the file was written successfully
+        print(f"Video saved to {output_path}")
+
+
+    def authenticate_youtube(self):
+        """Authenticate and return a YouTube service object."""
+        creds = None
+        # Token file to store the user's access and refresh tokens
+        if os.path.exists("token.json"):
+            creds = Credentials.from_authorized_user_file("token.json", self.SCOPES)
+        # If no valid credentials, let the user log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file("client_secrets.json", self.SCOPES)
+                creds = flow.run_local_server(port=0)
+            # Save the credentials for the next run
+            with open("token.json", "w") as token:
+                token.write(creds.to_json())
+        
+        self.youtube = build("youtube", "v3", credentials=creds)
+        return self.youtube
     
-    def uploadVideoToYoutube():
-        return
+    def uploadVideoToYoutube(self):
+        print("uploading to YouTube.")
+        request_body = {
+            "snippet": {
+                "title": "Motivational Quotes",
+                "description": "This is a channel of daily motivational quotes to help brighten your day! Make sure to like and subscribe if you enjoy!",
+                "tags": self.tags,
+                "categoryId": 22  # 22 corresponds to 'People & Blogs'
+            },
+            "status": {
+                "privacyStatus": "public",  # Set to "private" or "unlisted" if needed
+            },
+        }
+
+        media = MediaFileUpload('final_video_vertical.mp4')
+
+        response_upload = self.youtube.videos().insert(
+            part="snippet,status",
+            body=request_body,
+            media_body=media
+        ).execute()
+
+        print(f"Video uploaded. Video ID: {response_upload['id']}")
+        return response_upload
     
 bot = motivationBot()
-bot.start()
+bot.run()
