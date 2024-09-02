@@ -35,10 +35,13 @@ class motivationBot:
         self.getMotivationalQuote()
         self.numQuotesUsedInInterval = 1
         self.getRandomBackgroundVideo()
-        self.addMusicToVideo()
         self.convert_to_vertical('final_video.mp4', 'final_video_vertical.mp4')
+        self.addMusicToVideo()
         self.authenticate_youtube()
-        self.uploadVideoToYoutube()
+        #upload video
+        self.uploadVideoToYoutube('final_video.mp4')
+        #upload short
+        self.uploadVideoToYoutube('final_video_vertical_with_sound.mp4')
 
     def getMotivationalQuote(self):
         #get motivational quote
@@ -90,12 +93,23 @@ class motivationBot:
         
     def addMusicToVideo(self, video_path = "quoted_video.mp4", outputPath = 'final_video.mp4'):
         print("adding music to video")
+        randomAudioNum = random.randint(0, 9)
+        #add audio to normal
         video = VideoFileClip(video_path)
-        randomAudioNum = random.randint(0, 7)
         audio_path = "music/" + str(randomAudioNum) + ".mp3"
         audio = AudioFileClip(audio_path).subclip(0, video.duration)  # Ensures the audio matches the video length
         video_with_audio = video.set_audio(audio)
         video_with_audio.write_videofile(outputPath, codec='libx264', audio_codec='aac')
+
+        #add audio to vertical
+        video_path = 'final_video_vertical.mp4'
+        outputPath = 'final_video_vertical_with_sound.mp4'
+        video = VideoFileClip(video_path)
+        audio_path = "music/" + str(randomAudioNum) + ".mp3"
+        audio = AudioFileClip(audio_path).subclip(0, video.duration)  # Ensures the audio matches the video length
+        video_with_audio = video.set_audio(audio)
+        video_with_audio.write_videofile(outputPath, codec='libx264', audio_codec='aac')
+
 
 
     def addQuoteToBackground(self, cap):
@@ -268,7 +282,7 @@ class motivationBot:
         self.youtube = build("youtube", "v3", credentials=creds)
         return self.youtube
     
-    def uploadVideoToYoutube(self):
+    def uploadVideoToYoutube(self, video_path):
         print("uploading to YouTube.")
         request_body = {
             "snippet": {
@@ -282,7 +296,7 @@ class motivationBot:
             },
         }
 
-        media = MediaFileUpload('final_video_vertical.mp4')
+        media = MediaFileUpload(video_path)
 
         response_upload = self.youtube.videos().insert(
             part="snippet,status",
